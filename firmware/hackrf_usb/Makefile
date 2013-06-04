@@ -39,6 +39,6 @@ SRC = $(BINARY).c \
 	../common/xapp058/lenval.c \
 	../common/xapp058/micro.c \
 	../common/xapp058/ports.c \
-	../common/rom_iap.c
+	../common/rom_iap.c m0_bin.o
 
 include ../common/Makefile_inc.mk

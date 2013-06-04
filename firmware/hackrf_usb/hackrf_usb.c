@@ -26,6 +26,8 @@
 #include <libopencm3/lpc43xx/gpio.h>
 #include <libopencm3/lpc43xx/nvic.h>
 #include <libopencm3/lpc43xx/sgpio.h>
+#include <libopencm3/lpc43xx/creg.h>
+#include <libopencm3/lpc43xx/ipc.h>
 
 #include <hackrf_core.h>
 #include <si5351c.h>
@@ -43,6 +45,7 @@
 #include "usb_descriptor.h"
 #include "usb_standard_request.h"
 
+#include "m0_bin.h"
 static volatile transceiver_mode_t transceiver_mode = TRANSCEIVER_MODE_OFF;
 
 uint8_t* const usb_bulk_buffer = (uint8_t*)0x20004000;
@@ -84,6 +87,8 @@ void update_switches(void)
 		rffc5071_tx(switchctrl);
 	}
 }
+
+int whichbuf = 0;
 
 #define FREQ_ONE_MHZ     (1000*1000)
 
@@ -286,7 +291,12 @@ usb_endpoint_t usb_endpoint_bulk_out = {
 void baseband_streaming_disable() {
 	sgpio_cpld_stream_disable();
 
-	nvic_disable_irq(NVIC_M4_SGPIO_IRQ);
+	nvic_disable_irq(NVIC_M4_M0CORE_IRQ);
+	nvic_clear_pending_irq(NVIC_M4_M0CORE_IRQ);
+	
+	ipc_halt_m0();
+	
+	whichbuf = 0;
 	
 	usb_endpoint_disable(&usb_endpoint_bulk_in);
 	usb_endpoint_disable(&usb_endpoint_bulk_out);
@@ -308,6 +318,10 @@ void set_transceiver_mode(const transceiver_mode_t new_transceiver_mode) {
 		//rffc5071_set_frequency(1700, 0); // 2600 MHz IF - 1700 MHz LO = 900 MHz RF
 		max2837_start();
 		max2837_rx();
+		
+		nvic_enable_irq(NVIC_M4_M0CORE_IRQ);
+		ipc_start_m0(0x2000C000);
+
 	} else if (transceiver_mode == TRANSCEIVER_MODE_TX) {
 		gpio_clear(PORT_LED1_3, PIN_LED2);
 		gpio_set(PORT_LED1_3, PIN_LED3);
@@ -317,6 +331,9 @@ void set_transceiver_mode(const transceiver_mode_t new_transceiver_mode) {
 		//rffc5071_set_frequency(1700, 0); // 2600 MHz IF - 1700 MHz LO = 900 MHz RF
 		max2837_start();
 		max2837_tx();
+		
+		nvic_enable_irq(NVIC_M4_M0CORE_IRQ);
+		ipc_start_m0(0x2000C000+0x400);
 	} else {
 		gpio_clear(PORT_LED1_3, PIN_LED2);
 		gpio_clear(PORT_LED1_3, PIN_LED3);
@@ -324,10 +341,8 @@ void set_transceiver_mode(const transceiver_mode_t new_transceiver_mode) {
 		return;
 	}
 
-	sgpio_configure(transceiver_mode, true);
+	sgpio_configure(transceiver_mode, true);	
 
-	nvic_set_priority(NVIC_M4_SGPIO_IRQ, 0);
-	nvic_enable_irq(NVIC_M4_SGPIO_IRQ);
 	SGPIO_SET_EN_1 = (1 << SGPIO_SLICE_A);
 
     sgpio_cpld_stream_enable();
@@ -907,67 +922,17 @@ bool usb_set_configuration(
 	return true;
 };
 
-void sgpio_irqhandler() {
-	SGPIO_CLR_STATUS_1 = (1 << SGPIO_SLICE_A);
 
-	uint32_t* const p = (uint32_t*)&usb_bulk_buffer[usb_bulk_buffer_offset];
-	if( transceiver_mode == TRANSCEIVER_MODE_RX ) {
-		__asm__(
-			"ldr r0, [%[SGPIO_REG_SS], #44]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #0]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #20]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #4]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #40]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #8]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #8]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #12]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #36]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #16]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #16]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #20]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #32]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #24]\n\t"
-			"ldr r0, [%[SGPIO_REG_SS], #0]\n\t"
-			"rev16 r0, r0\n\t" /* Swap QI -> IQ */
-			"str r0, [%[p], #28]\n\t"
-			:
-			: [SGPIO_REG_SS] "l" (SGPIO_PORT_BASE + 0x100),
-			  [p] "l" (p)
-			: "r0"
-		);
-	} else {
-		__asm__(
-			"ldr r0, [%[p], #0]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #44]\n\t"
-			"ldr r0, [%[p], #4]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #20]\n\t"
-			"ldr r0, [%[p], #8]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #40]\n\t"
-			"ldr r0, [%[p], #12]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #8]\n\t"
-			"ldr r0, [%[p], #16]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #36]\n\t"
-			"ldr r0, [%[p], #20]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #16]\n\t"
-			"ldr r0, [%[p], #24]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #32]\n\t"
-			"ldr r0, [%[p], #28]\n\t"
-			"str r0, [%[SGPIO_REG_SS], #0]\n\t"
-			:
-			: [SGPIO_REG_SS] "l" (SGPIO_PORT_BASE + 0x100),
-			  [p] "l" (p)
-			: "r0"
-		);
-	}
+volatile int transferflag = 0;
+void m0core_irqhandler() {
+	CREG_M0TXEVENT = 0;
 	
-	usb_bulk_buffer_offset = (usb_bulk_buffer_offset + 32) & usb_bulk_buffer_mask;
+	if(!whichbuf){
+		whichbuf = 1;
+	} else {
+		whichbuf = 0;
+	}
+	transferflag = 1;
 }
 
 int main(void) {
@@ -998,30 +963,34 @@ int main(void) {
 
 	rffc5071_setup();
 
+	nvic_set_priority(NVIC_M4_M0CORE_IRQ, 0);
+	/* Copy M0 code from M4 embedded addr to final addr M0 */
+	u32* dest = (u32*)0x2000C000;
+	for(u32* src = (u32 *)&m0_rx_bin[0]; src < (u32 *)(&m0_rx_bin[0]+m0_rx_bin_size); )
+	{
+		*dest++ = *src++;
+	}
+	dest = (u32*)0x2000C000+0x400;
+	for(u32* src = (u32 *)&m0_tx_bin[0]; src < (u32 *)(&m0_tx_bin[0]+m0_tx_bin_size); )
+	{
+		*dest++ = *src++;
+	}
+	
 #ifdef JAWBREAKER
 	switchctrl = SWITCHCTRL_AMP_BYPASS;
 #endif
 
 	while(true) {
-		// Wait until buffer 0 is transmitted/received.
-		while( usb_bulk_buffer_offset < 16384 );
-
-		// Set up IN transfer of buffer 0.
-		usb_endpoint_schedule_no_int(
-			(transceiver_mode == TRANSCEIVER_MODE_RX)
-			? &usb_endpoint_bulk_in : &usb_endpoint_bulk_out,
-			&usb_td_bulk[0]
-		);
-	
-		// Wait until buffer 1 is transmitted/received.
-		while( usb_bulk_buffer_offset >= 16384 );
-
-		// Set up IN transfer of buffer 1.
-		usb_endpoint_schedule_no_int(
-			(transceiver_mode == TRANSCEIVER_MODE_RX)
-			? &usb_endpoint_bulk_in : &usb_endpoint_bulk_out,
-			&usb_td_bulk[1]
-		);
+		if(transferflag){
+			// Set up IN transfer of buffer 0.
+			usb_endpoint_schedule_no_int(
+				(transceiver_mode == TRANSCEIVER_MODE_RX)
+				? &usb_endpoint_bulk_in : &usb_endpoint_bulk_out,
+				&usb_td_bulk[whichbuf]
+			);
+			transferflag = 0;
+		}
+		__asm("wfe;");
 	}
 	
 	return 0;

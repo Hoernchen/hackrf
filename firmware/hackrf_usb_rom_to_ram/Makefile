@@ -41,13 +41,15 @@ SRC = hackrf_usb.c \
 	../common/xapp058/lenval.c \
 	../common/xapp058/micro.c \
 	../common/xapp058/ports.c \
-	../common/rom_iap.c
+	../common/rom_iap.c m0_bin.o
 
 LDSCRIPT = ../common/LPC4330_M4_rom_to_ram.ld
 
 %.o: ../$(SRC_DIR)/%.c  Makefile
-	@printf "  CC      $(subst $(shell pwd)/,,$(@))\n"
 	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
 
+%.o: ../$(SRC_DIR)/%.s Makefile
+	$(Q)$(CC) $(CFLAGS) -o $@ -c $<
+	
 include ../common/Makefile_inc.mk
 

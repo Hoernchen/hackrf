@@ -33,7 +33,7 @@ TOOLCHAIN_DIR := $(shell dirname `which $(CC)`)/../$(PREFIX)
 
 CFLAGS += -std=c99 -O3 -g3 -Wall -Wextra -I$(LIBOPENCM3)/include \
 		-mcpu=cortex-m0 -mthumb -MD
-LDFLAGS += -L$(TOOLCHAIN_DIR)/lib/armv7e-m/fpu \
+LDFLAGS += -mcpu=cortex-m0 -mthumb -L$(TOOLCHAIN_DIR)/lib/armv6-m \
 		-L$(LIBOPENCM3)/lib \
 		-T$(LDSCRIPT) -nostartfiles \
 		-Wl,--gc-sections -Xlinker -Map=$(BINARY).map

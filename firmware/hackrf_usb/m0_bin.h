@@ -25,10 +25,8 @@ extern "C"
 {
 #endif
 
-extern u8 m0_rx_bin[];
-extern u32 m0_rx_bin_size;
-extern u8 m0_tx_bin[];
-extern u32 m0_tx_bin_size;
+extern u8 m0_rxtx_bin[];
+extern u32 m0_rxtx_bin_size;
 
 #ifdef __cplusplus
 }

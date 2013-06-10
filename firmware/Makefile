@@ -29,8 +29,7 @@ TARGETS = blinky \
 		  startup \
 		  startup_systick \
 		  startup_systick_perfo \
-		  m0_rx \
-		  m0_tx \
+		  m0_rxtx \
 		  hackrf_usb \
 		  hackrf_usb_rom_to_ram
 

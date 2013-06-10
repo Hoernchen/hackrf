@@ -29,7 +29,7 @@ static volatile uint32_t usb_bulk_buffer_offset = 0;
 static const uint32_t usb_bulk_buffer_mask = 32768 - 1;
 
 int flag = 0;
-void m0_sgpio_isr() {
+void m0_sgpio_rx_isr() {
 	SGPIO_CLR_STATUS_1 = (1 << SGPIO_SLICE_A);
 	uint32_t* const p = (uint32_t*)&usb_bulk_buffer[usb_bulk_buffer_offset];
 
@@ -74,11 +74,56 @@ void m0_sgpio_isr() {
 		__asm("sev;");
 	}
 }
+
+void m0_sgpio_tx_isr() {
+	SGPIO_CLR_STATUS_1 = (1 << SGPIO_SLICE_A);
+	uint32_t* const p = (uint32_t*)&usb_bulk_buffer[usb_bulk_buffer_offset];
+
+		__asm__(
+			"ldr r0, [%[p], #0]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #44]\n\t"
+			"ldr r0, [%[p], #4]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #20]\n\t"
+			"ldr r0, [%[p], #8]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #40]\n\t"
+			"ldr r0, [%[p], #12]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #8]\n\t"
+			"ldr r0, [%[p], #16]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #36]\n\t"
+			"ldr r0, [%[p], #20]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #16]\n\t"
+			"ldr r0, [%[p], #24]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #32]\n\t"
+			"ldr r0, [%[p], #28]\n\t"
+			"str r0, [%[SGPIO_REG_SS], #0]\n\t"
+			:
+			: [SGPIO_REG_SS] "l" (SGPIO_PORT_BASE + 0x100),
+			  [p] "l" (p)
+			: "r0"
+		);
+	
+	usb_bulk_buffer_offset = (usb_bulk_buffer_offset + 32) & usb_bulk_buffer_mask;
+	
+	if(usb_bulk_buffer_offset == 0){
+		flag = 0;
+		__asm("sev;");
+	}else if( !flag && usb_bulk_buffer_offset & 0x4000 ){
+		flag = 1;
+		__asm("sev;");
+	}
+}
+
 int main(void)
 {
 	nvic_disable_irq(NVIC_M0_SGPIO_IRQ);
 	nvic_clear_pending_irq(NVIC_M0_SGPIO_IRQ);
 	nvic_set_priority(NVIC_M0_SGPIO_IRQ, 0);
+	
+	if(*(unsigned int*)0x2000c400 == 0x0)
+		*(unsigned int*)0x2000c08c = (unsigned int)m0_sgpio_rx_isr;
+	else
+		*(unsigned int*)0x2000c08c = (unsigned int)m0_sgpio_tx_isr;
+		
 	nvic_enable_irq(NVIC_M0_SGPIO_IRQ);
 	
 	while(1) __asm("wfe;");

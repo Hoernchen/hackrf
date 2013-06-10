@@ -17,7 +17,7 @@
 ## along with this library.  If not, see <http://www.gnu.org/licenses/>.
 ##
 
-BINARY = m0tx
+BINARY = m0rxtx
 
 SRC = $(BINARY).c
 

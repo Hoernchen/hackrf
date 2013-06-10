@@ -47,6 +47,8 @@
 
 #include "m0_bin.h"
 static volatile transceiver_mode_t transceiver_mode = TRANSCEIVER_MODE_OFF;
+volatile int transferflag = 0;
+volatile int whichbuf = 0;
 
 uint8_t* const usb_bulk_buffer = (uint8_t*)0x20004000;
 static volatile uint32_t usb_bulk_buffer_offset = 0;
@@ -87,8 +89,6 @@ void update_switches(void)
 		rffc5071_tx(switchctrl);
 	}
 }
-
-int whichbuf = 0;
 
 #define FREQ_ONE_MHZ     (1000*1000)
 
@@ -318,8 +318,10 @@ void set_transceiver_mode(const transceiver_mode_t new_transceiver_mode) {
 		//rffc5071_set_frequency(1700, 0); // 2600 MHz IF - 1700 MHz LO = 900 MHz RF
 		max2837_start();
 		max2837_rx();
-		
+
 		nvic_enable_irq(NVIC_M4_M0CORE_IRQ);
+		*(unsigned int*)0x2000c400 = 0x0;
+		//~ *(unsigned int*)0x2000c004 = 0x000000002000c175;
 		ipc_start_m0(0x2000C000);
 
 	} else if (transceiver_mode == TRANSCEIVER_MODE_TX) {
@@ -332,8 +334,13 @@ void set_transceiver_mode(const transceiver_mode_t new_transceiver_mode) {
 		max2837_start();
 		max2837_tx();
 		
+		transferflag = 1;
+		whichbuf = 1;
+
 		nvic_enable_irq(NVIC_M4_M0CORE_IRQ);
-		ipc_start_m0(0x2000C000+0x400);
+		*(unsigned int*)0x2000c400 = 0x1;
+		//~ *(unsigned int*)0x2000c004 = 0x000000002000c565;
+		ipc_start_m0(0x2000C000);
 	} else {
 		gpio_clear(PORT_LED1_3, PIN_LED2);
 		gpio_clear(PORT_LED1_3, PIN_LED3);
@@ -923,7 +930,6 @@ bool usb_set_configuration(
 };
 
 
-volatile int transferflag = 0;
 void m0core_irqhandler() {
 	CREG_M0TXEVENT = 0;
 	
@@ -966,12 +972,7 @@ int main(void) {
 	nvic_set_priority(NVIC_M4_M0CORE_IRQ, 0);
 	/* Copy M0 code from M4 embedded addr to final addr M0 */
 	u32* dest = (u32*)0x2000C000;
-	for(u32* src = (u32 *)&m0_rx_bin[0]; src < (u32 *)(&m0_rx_bin[0]+m0_rx_bin_size); )
-	{
-		*dest++ = *src++;
-	}
-	dest = (u32*)0x2000C000+0x400;
-	for(u32* src = (u32 *)&m0_tx_bin[0]; src < (u32 *)(&m0_tx_bin[0]+m0_tx_bin_size); )
+	for(u32* src = (u32 *)&m0_rxtx_bin[0]; src < (u32 *)(&m0_rxtx_bin[0]+m0_rxtx_bin_size); )
 	{
 		*dest++ = *src++;
 	}

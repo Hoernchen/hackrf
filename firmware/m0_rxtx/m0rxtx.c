@@ -23,6 +23,7 @@
 #include <libopencm3/lpc43xx/nvic.h>
 #include <libopencm3/lpc43xx/creg.h>
 
+#define POLLING 1
 
 uint8_t* const usb_bulk_buffer = (uint8_t*)0x20004000;
 static volatile uint32_t usb_bulk_buffer_offset = 0;
@@ -30,6 +31,10 @@ static const uint32_t usb_bulk_buffer_mask = 32768 - 1;
 
 int flag = 0;
 void m0_sgpio_rx_isr() {
+#ifdef POLLING
+	while(1){
+		while(! (SGPIO_STATUS_1 & (1 << SGPIO_SLICE_A)));
+#endif
 	SGPIO_CLR_STATUS_1 = (1 << SGPIO_SLICE_A);
 	uint32_t* const p = (uint32_t*)&usb_bulk_buffer[usb_bulk_buffer_offset];
 
@@ -73,9 +78,16 @@ void m0_sgpio_rx_isr() {
 		flag = 1;
 		__asm("sev;");
 	}
+#ifdef POLLING
+}
+#endif
 }
 
 void m0_sgpio_tx_isr() {
+#ifdef POLLING
+	while(1){
+		while(! (SGPIO_STATUS_1 & (1 << SGPIO_SLICE_A)));
+#endif
 	SGPIO_CLR_STATUS_1 = (1 << SGPIO_SLICE_A);
 	uint32_t* const p = (uint32_t*)&usb_bulk_buffer[usb_bulk_buffer_offset];
 
@@ -111,20 +123,29 @@ void m0_sgpio_tx_isr() {
 		flag = 1;
 		__asm("sev;");
 	}
+#ifdef POLLING
+}
+#endif
 }
 
 int main(void)
 {
 	nvic_disable_irq(NVIC_M0_SGPIO_IRQ);
+#ifndef POLLING
 	nvic_clear_pending_irq(NVIC_M0_SGPIO_IRQ);
 	nvic_set_priority(NVIC_M0_SGPIO_IRQ, 0);
-	
 	if(*(unsigned int*)0x2000c400 == 0x0)
 		*(unsigned int*)0x2000c08c = (unsigned int)m0_sgpio_rx_isr;
 	else
 		*(unsigned int*)0x2000c08c = (unsigned int)m0_sgpio_tx_isr;
-		
+
 	nvic_enable_irq(NVIC_M0_SGPIO_IRQ);
+#else
+	if(*(unsigned int*)0x2000c400 == 0x0)
+		m0_sgpio_rx_isr();
+	else
+		m0_sgpio_tx_isr();
+#endif
 	
 	while(1) __asm("wfe;");
 	

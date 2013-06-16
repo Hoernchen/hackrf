@@ -832,6 +832,44 @@ usb_request_status_t usb_vendor_request_set_if_freq(
 	return USB_REQUEST_STATUS_OK;
 }
 
+usb_request_status_t usb_vendor_request_set_dc_offset(
+  usb_endpoint_t* const endpoint,  const usb_transfer_stage_t stage)
+{
+  if( stage == USB_TRANSFER_STAGE_SETUP ) {
+      const int bits = 5;
+      const uint16_t mask  = (1 << bits) - 1;
+      uint16_t value = endpoint->setup.value;
+      int i;
+
+      value = ((value >> 8) & mask)    /* I */
+            | ((value & mask) << bits);  /* Q */
+
+      gpio_clear(GPIO3, BIT10);
+      for (i=0; i<10; i++)
+        __asm__("nop");
+
+      for (i=0; i<2*bits; i++) {
+        gpio_clear(GPIO3, BIT8);
+        if (value & (1 << (2*bits-1-i)))
+          gpio_set(GPIO3, BIT9);
+        else
+          gpio_clear(GPIO3, BIT9);
+        gpio_set(GPIO3, BIT8);
+      }
+
+      gpio_clear(GPIO3, BIT8);
+      gpio_clear(GPIO3, BIT9);
+
+      for (i=0; i<10; i++)
+        __asm__("nop");
+      gpio_set(GPIO3, BIT10);
+
+      usb_endpoint_schedule_ack(endpoint->in);
+      return USB_REQUEST_STATUS_OK;
+  }
+  return USB_REQUEST_STATUS_OK;
+}
+
 static const usb_request_handler_fn vendor_request_handler[] = {
 	NULL,
 	usb_vendor_request_set_transceiver_mode,
@@ -856,6 +894,7 @@ static const usb_request_handler_fn vendor_request_handler[] = {
 	usb_vendor_request_set_vga_gain,
 	usb_vendor_request_set_txvga_gain,
 	usb_vendor_request_set_if_freq,
+    usb_vendor_request_set_dc_offset,
 };
 
 static const uint32_t vendor_request_handler_count =

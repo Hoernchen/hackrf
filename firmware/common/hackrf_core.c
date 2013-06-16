@@ -501,7 +501,7 @@ void pin_setup(void) {
 	GPIO2_DIR |= (PIN_LED1 | PIN_LED2 | PIN_LED3);
 	
 	/* GPIO3[6] on P6_10  as output. */
-	GPIO3_DIR |= PIN_EN1V8;
+    GPIO3_DIR |= PIN_EN1V8 | BIT8 | BIT9 | BIT10;
 	
 	/* Configure SSP1 Peripheral (to be moved later in SSP driver) */
 	scu_pinmux(SCU_SSP1_MISO, (SCU_SSP_IO | SCU_CONF_FUNCTION5));

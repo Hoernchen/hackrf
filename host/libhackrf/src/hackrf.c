@@ -65,6 +65,7 @@ typedef enum {
 	HACKRF_VENDOR_REQUEST_SET_VGA_GAIN = 20,
 	HACKRF_VENDOR_REQUEST_SET_TXVGA_GAIN = 21,
 	HACKRF_VENDOR_REQUEST_SET_IF_FREQ = 22,
+	HACKRF_VENDOR_REQUEST_SET_DC_OFFSET = 23,
 } hackrf_vendor_request;
 
 typedef enum {
@@ -985,6 +986,29 @@ int ADDCALL hackrf_set_if_freq(hackrf_device* device, const uint32_t freq_mhz)
 	} else {
 		return HACKRF_SUCCESS;
 	}
+}
+
+int ADDCALL hackrf_set_dc_offset(hackrf_device* device, int8_t i, int8_t q)
+{
+  int result;
+
+  result = libusb_control_transfer(
+    device->usb_device,
+    LIBUSB_ENDPOINT_OUT | LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_RECIPIENT_DEVICE,
+    HACKRF_VENDOR_REQUEST_SET_DC_OFFSET,
+    ((uint8_t)i << 8) | (uint8_t)q,
+    0,
+    NULL,
+    0,
+    0
+  );
+
+  if( result != 0 )
+  {
+    return HACKRF_ERROR_INVALID_PARAM;
+  } else {
+    return HACKRF_SUCCESS;
+  }
 }
 
 static void* transfer_threadproc(void* arg)
